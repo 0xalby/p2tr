@@ -1,7 +1,8 @@
 declare namespace NodeJS {
     interface ProcessEnv {
-      WIF: string;
-      FROM_ADDRESS: string;
-      TO_ADDRESS: string;
+      A_ADDRESS: string;
+      A_WIF: string;
+      B_ADDRESS: string;
+      B_WIF: string;
     }
   }

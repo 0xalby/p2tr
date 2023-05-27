@@ -1,18 +1,21 @@
 import { networks, payments, Psbt } from "bitcoinjs-lib";
-import { blockstream, broadcast } from "./blockstream";
+import { broadcast, waitUntilUTXO } from "./blockstream";
 import { ECPair } from "./libs";
 import { toXOnly } from "./pubkey";
 import { tweakSigner } from "./tweak";
-import { networkType } from "../types";
-
-import axios from 'axios';
+import { IUTXO, networkType } from "../types";
+import { selectUTXO } from "./utxo";
 
 export const sendBtc = async (
-  wif: string,
+  config: {wif: string,
+  senderAddress: string,
   recipientAddress: string,
   amount: number,
-  networkType: networkType
+  networkType: networkType}
 ): Promise<{ txid: string; hex: string }> => {
+
+  const {wif, senderAddress, recipientAddress, amount, networkType} = config;
+
   const network =
     networkType == "testnet" ? networks.testnet : networks.bitcoin;
 
@@ -24,28 +27,48 @@ export const sendBtc = async (
     network: network,
   });
 
-  const taprootAddress = p2tr.address;
+  const taprootAddress = p2tr.address ?? "";
 
-  //need to use blockstream function
-  const apiUrl = `https://blockstream.info${networkType == 'testnet' ? '/testnet/api/' : '/'}address/${taprootAddress}/utxo`;
-  const response = await axios.get(apiUrl);
-  const utxos = response.data; 
+  const utxos = await waitUntilUTXO(taprootAddress, networkType);
 
   const psbt = new Psbt({ network: network });
 
-  psbt.addInput({
-    hash: utxos[0].txid,
-    index: utxos[0].vout,
-    witnessUtxo: { value: utxos[0].value, script: p2tr.output! },
-    tapInternalKey: toXOnly(keyPair.publicKey),
-  });
+  const feeRate = 20;
+  const vSize = psbt.extractTransaction().virtualSize();
+  const totalFee = feeRate * vSize;
+  const totalInput = amount + totalFee;
+
+  const usedUtoxs = await selectUTXO(utxos, totalInput);
+  const totalUtxoValue = usedUtoxs.map((utxo: IUTXO) => utxo.value).reduce((partialSum, a) => partialSum + a, 0);
+  
+  const changeAmount = totalUtxoValue - amount;
+
+  console.log('amount', amount);
+  console.log('total fee', totalFee);
+  console.log('change amount', changeAmount);
+  console.log('change amout minus fee', changeAmount - totalFee);
+  console.log('total utxo value (total input)', totalUtxoValue);
+  
+  for(const utxo of usedUtoxs) {
+    psbt.addInput({
+      hash: utxo.txid,
+      index: utxo.vout,
+      witnessUtxo: { value: utxo.value, script: p2tr.output! },
+      tapInternalKey: toXOnly(keyPair.publicKey),
+    });
+  };
 
   psbt.addOutput({
     address: recipientAddress,
     value: amount,
   });
 
-  psbt.signInput(0, tweaked);
+  psbt.addOutput({
+    address: senderAddress,
+    value: changeAmount - totalFee,
+  });
+  
+  psbt.signAllInputs(tweaked);
   psbt.finalizeAllInputs();
 
   const transaction = psbt.extractTransaction();
