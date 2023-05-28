@@ -11,10 +11,11 @@ export const sendBtc = async (
   senderAddress: string,
   recipientAddress: string,
   amount: number,
-  networkType: networkType}
+  networkType: networkType,
+  feeRate: number }
 ): Promise<{ txid: string; hex: string }> => {
 
-  const {wif, senderAddress, recipientAddress, amount, networkType} = config;
+  const {wif, senderAddress, recipientAddress, amount, networkType, feeRate } = config;
 
   const network =
     networkType == "testnet" ? networks.testnet : networks.bitcoin;
@@ -33,7 +34,6 @@ export const sendBtc = async (
 
   const psbt = new Psbt({ network: network });
 
-  const feeRate = 20;
   const vSize = psbt.extractTransaction().virtualSize();
   const totalFee = feeRate * vSize;
   const totalInput = amount + totalFee;

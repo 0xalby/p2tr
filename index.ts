@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import { sendBtc } from "./utils/transaction";
+
 dotenv.config();
 
 const A_WIF = process.env.A_WIF;
@@ -20,6 +21,7 @@ const main = async () => {
       senderAddress: A_ADDRESS,
       recipientAddress: B_ADDRESS,
       amount: amount,
+      feeRate: 20
     });
     console.log(`tx:`, result.txid);
   } catch (error) {
